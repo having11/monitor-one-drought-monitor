@@ -22,6 +22,36 @@ constexpr uint8_t TrigPin = D4;           // A4
 constexpr uint8_t EchoPin = D5;           // A5
 constexpr uint8_t WaterDetectPin = D6;    // A6
 
+/*
+Connect an HC-SR04 Range finder as follows:
+Monitor One   HC-SR04
+GND     GND
+5V      VCC
+D4      Trig
+D5      Voltage divider output - see below
+
+Echo --|
+       >
+       < 470 ohm resistor
+       >
+       ------ D5 on MO
+       >
+       < 470 ohm resistor
+       >
+GND ---|
+*/
+
+/** 
+ * 8 > NC Red
+ * 7 > GND Black
+ * 6 > 3.3v Pink
+ * 5 > NC Gray
+ * 4 > A6 (WaterDetectPin) White
+ * 3 > A5 (EchoPin) Blue
+ * 2 > A4 (TrigPin) Yellow
+ * 1 > 5v green
+ */
+
 SerialLogHandler logHandler(115200, LOG_LEVEL_TRACE, {
     { "app.gps.nmea", LOG_LEVEL_INFO },
     { "app.gps.ubx",  LOG_LEVEL_INFO },
@@ -44,10 +74,10 @@ typedef struct
 } SensorData_t;
 
 bool readSensorData(SensorData_t *);
+double getDistanceCm(void);
 void myLocationGenerationCallback(JSONWriter &writer, LocationPoint &point, const void *context);
 
 Adafruit_BME680 bme;
-HC_SR04 ranger(TrigPin, EchoPin);
 SensorData_t data = { .temperatureC = -1.0f };
 
 bool failure;
@@ -61,6 +91,11 @@ void setup()
     TrackerLocation::instance().regLocGenCallback(myLocationGenerationCallback);
 
     pinMode(WaterDetectPin, INPUT);
+    pinMode(TrigPin, OUTPUT);
+    pinMode(EchoPin, INPUT);
+
+
+
     if (!bme.begin())
     {
         Log.error("Failed to start BME680");
@@ -97,7 +132,9 @@ bool readSensorData(SensorData_t *senData)
     senData->gasResistanceKOhms = bme.gas_resistance / 1000.0;
     senData->altitudeM = bme.readAltitude(SeaLevelPressureHPa);
 
-    senData->distanceCm = ranger.getDistanceCM();
+    // Using random values in this example
+    senData->distanceCm = random(20, 30);
+    // senData->distanceCm = getDistanceCm();
     senData->waterDetected = digitalRead(WaterDetectPin);
 
     return true;
@@ -115,4 +152,18 @@ void myLocationGenerationCallback(JSONWriter &writer, LocationPoint &point, cons
     writer.name("distanceCm").value(data.distanceCm);
     writer.name("waterDetected").value(data.waterDetected);
     writer.endObject();
+}
+
+double getDistanceCm()
+{
+    digitalWriteFast(TrigPin, LOW);
+    delayMicroseconds(5);
+    digitalWriteFast(TrigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWriteFast(TrigPin, LOW);
+
+    pinMode(EchoPin, INPUT);
+    auto duration = pulseIn(EchoPin, HIGH);
+
+    return (duration / 2.0) / 74.0;
 }
